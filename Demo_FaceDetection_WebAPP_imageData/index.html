@@ -1,0 +1,227 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style type="text/css">
+        body {
+            margin:0;
+            padding:0;
+        }
+        .fullscreen {
+            position:relative;
+            width:auto;
+            height:100%;
+        }
+        .info {
+            position: relative;
+            top: 10px;
+            width: 1000px;
+            text-align: left;
+            z-index: 100;
+            display:block;
+            font-size:x-large;
+            color: #ffffff;
+            text-shadow: 0px -1px 0px #000000,
+                        1px  0px 0px #000000,
+                        0px  1px 0px #000000,
+                        -1px  0px 0px #000000;
+        }
+
+        div {
+            float: left;
+            border :1px solid #444444;
+            padding:5px;
+            margin: 5px;
+            background:#3B3B3B;
+        }
+    </style>
+</head>
+
+<body>
+<div id="fps" class="info"></div> 
+<div>
+    <video id="webcam" class="fullscreen" autoplay style="display:none;"></video>
+</div>
+<div>
+    <canvas id="snapshot" class="fullscreen"></canvas>
+    <canvas id="result" class="fullscreen"></canvas>
+</div>
+
+</body>
+<script src="./facedetection.js"></script>
+<script>
+    var count = 0;
+    var sum = 0;
+    var updateFPS = function(s, e) {
+        ++count;
+        if (count == 20) {
+
+            fpsText.nodeValue = "FPS = " + 1000/(sum/count);
+
+            sum = 0;
+            count = 0;
+        }
+        else {
+            sum += (e.getTime() - s.getTime());
+        }
+    }
+</script>
+<script>
+    var video = document.getElementById('webcam');
+    var canvas = document.getElementById('snapshot');
+    var ctx = canvas.getContext('2d');
+    var canvas2 = document.getElementById('result');
+    var ctx2 = canvas2.getContext('2d');
+    var localMediaStream = null;
+    var continuous = true;
+
+    var fps = document.getElementById('fps');
+    var fpsText = document.createTextNode('');
+    fps.appendChild(fpsText);
+
+    var kaku_make_noice = Module.cwrap('kaku_face_detection_demo', 'number', ['number','number', 'number', 'number', 'number', 'number']);
+    var kaku_feature_tracking_demo = Module.cwrap('kaku_feature_tracking_demo', 'number', ['number', 'number', 'number']);
+
+    var width;
+    var height;
+    var inputBuf;
+    var temp1;
+    var resultImageData;
+    
+    var minFaceWidth;
+    var minFaceHeight;
+    var scaleFactor;
+
+    //Checking camera
+    var hasGetUserMedia = function() {
+        return !!(navigator.getUserMedia || navigator.webkitGetUserMedia ||
+                navigator.mozGetUserMedia || navigator.msGetUserMedia);
+    }
+    //Error
+    var onFailSoHard = function(e) {
+        console.log('Error!', e);
+    };
+
+    // kaku_helper
+    function kaku_helper () {
+
+        /* calculate FPS */
+        var s = new Date();
+
+        /* draw to canvas 1 */
+        var start = new Date();
+        ctx.drawImage(video, 0, 0, width, height);
+        var end = new Date();
+        console.log("DrawImage " + (end.getTime() - start.getTime()) + " ms");;
+
+        /* get image data */
+        var start = new Date();
+        var img = ctx.getImageData(0, 0, width, height);
+        var end = new Date();
+        console.log("GetImageData: " + (end.getTime() - start.getTime()) + " ms");
+
+
+        /* copy image data */
+        start = new Date();
+
+        // API calls, slow
+        // for(var i = 0; i < img.data.length; ++i){
+        //     setValue(inputBuf+i, img.data[i], "i8");
+        // }
+
+        // not bad
+        // for (var i = 0; i < img.data.length; ++i) {
+        //     Module.HEAPU8[inputBuf+i] = img.data[i];
+        // }
+        
+        // optimized method
+        // Module.HEAPU8.set(img.data, inputBuf); // Uint8
+        temp1.set(img.data, 0);                   // Uint8Clamped
+        end = new Date();
+        console.log("CopyImageData: " + (end.getTime() - start.getTime()) + " ms");
+
+        // start = new Date();
+        kaku_make_noice(inputBuf, width, height, scaleFactor, minFaceWidth, minFaceHeight);
+        // end = new Date();
+
+
+
+        /* draw to canvas 2 */
+        // 
+        start = new Date();
+        ctx2.putImageData(resultImageData, 0, 0);
+        end = new Date();
+        console.log("PutImageData: " + (end.getTime() - start.getTime()) + " ms");
+
+        // delete the buffer 
+        // Module._free(inputBuf);
+        
+
+
+        /* calculate FPS */
+        var e = new Date();
+        updateFPS(s, e);
+    }
+
+    //Camera capture
+    var snapshot = function() {
+        if (localMediaStream) {
+            kaku_helper();
+        }
+        if(continuous) requestAnimationFrame(snapshot);
+    }
+
+    if (hasGetUserMedia()) {
+        console.log("Camera OK");
+    } else {
+        alert("Invalid!");
+    }
+
+
+    window.URL = window.URL || window.webkitURL;
+    navigator.getUserMedia  = navigator.getUserMedia || navigator.webkitGetUserMedia ||
+    navigator.mozGetUserMedia || navigator.msGetUserMedia;
+
+    var hdConstraints = {
+        video: true
+    }; 
+
+    var onSuccess = function(stream) {
+        video.src = window.URL.createObjectURL(stream);
+        localMediaStream = stream;
+        video.play();
+    }  
+
+    navigator.getUserMedia(hdConstraints, onSuccess, onFailSoHard);
+
+    var initializeASM = function() {
+        console.log("video.videoWidth = " + video.videoWidth);
+        console.log("video.videoHeight = " + video.videoHeight);
+
+        width = video.videoWidth;
+        height = video.videoHeight;
+
+        document.getElementById('snapshot').width = width;
+        document.getElementById('snapshot').height = height;
+        document.getElementById('result').width = width;
+        document.getElementById('result').height = height;
+
+        bufferSize = width*height*4;
+        inputBuf = Module._malloc(bufferSize);
+        temp1 = new Uint8ClampedArray(Module.HEAPU8.buffer, inputBuf, bufferSize);
+        resultImageData = new ImageData(temp1, width, height);
+
+        minFaceWidth = Math.min(width, height)/4;
+        minFaceHeight = Math.min(width, height)/4;
+        scaleFactor = 1.1;       
+
+        setTimeout('snapshot()', 1000);
+    }
+    
+    video.addEventListener('play', 
+        function() {
+            setTimeout('initializeASM()', 2500);
+        }, false);
+
+</script>
+</html>
