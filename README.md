@@ -25,4 +25,6 @@ make install
 </pre>
 
 ### Run
-Open your Firefox and load *opencvjs_demo_facedetection/Demo_Segmentation_WebAPP/index.html*
+Open your Firefox and load *opencvjs_demo_segmentation/Demo_FaceDetection_WebAPP_imageData/index.html*
+
+* Demo_FaceDetection_WebAPP_imageBitmap is not supported by any released browser now. It is an experimental of Mozilla Firefox.
